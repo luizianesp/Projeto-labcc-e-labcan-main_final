@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Agendamento - LabCC e LabCan</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js'></script>
+    
+    <style>
+        .hidden { display: none !important; }
+        .loading { opacity: 0.5; pointer-events: none; }
+        .fc-event { cursor: pointer; border-radius: 4px; font-size: 0.85em; padding: 2px 4px; white-space: normal; }
+        .fc-event-main-frame { display: block; }
+        .fc-event-time, .fc-event-title-container { font-weight: bold; }
+        .fc-event-title.fc-sticky { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 50; }
+        .modal-container { background-color: white; border-radius: 8px; padding: 24px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        #calendar .fc-view-harness { min-height: 400px; } /* Ou um valor adequado */
+        #calendarContainer { position: relative; }
+        #calendarLoadingMessage { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(255, 255, 255, 0.8); padding: 10px 20px; border-radius: 5px; z-index: 10; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="loginScreen" class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
+            <div class="text-center mb-8">
+                <h1 class="text-2xl font-bold text-gray-800 mb-2">Sistema de Agendamento</h1>
+                <p class="text-gray-600">LabCC e LabCan - UERN</p>
+            </div>
+            <form id="loginForm">
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Matrícula</label>
+                    <input type="text" id="matricula" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Digite sua matrícula" required>
+                </div>
+                <div class="mb-6">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Senha</label>
+                    <input type="password" id="senha" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Digite sua senha" required>
+                </div>
+                <div id="loginError" class="hidden mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded"></div>
+                <button type="submit" id="loginBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-200">Entrar</button>
+            </form>
+            <div class="mt-6 p-4 bg-gray-50 rounded-md">
+                <p class="text-sm text-gray-600 mb-2">Credenciais de teste:</p>
+                <p class="text-xs text-gray-500">Professor: Matrícula: 123456, Senha: 123456</p>
+                <p class="text-xs text-gray-500">Admin: Matrícula: 999999, Senha: admin123</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="mainSystem" class="hidden min-h-screen bg-gray-50">
+        <header class="bg-white shadow-sm border-b">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center py-4">
+                    <div><h1 class="text-xl font-semibold text-gray-900">Sistema de Agendamento</h1><p class="text-sm text-gray-600">LabCC e LabCan - UERN</p></div>
+                    <div class="flex items-center space-x-4"><span id="professorNome" class="text-sm text-gray-600"></span><button id="logoutBtn" class="text-gray-500 hover:text-gray-700"><i data-lucide="log-out" class="w-5 h-5"></i></button></div>
+                </div>
+            </div>
+        </header>
+        <nav class="bg-white shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex space-x-8">
+                    <button class="nav-btn active border-b-2 border-blue-500 py-4 px-1 text-sm font-medium text-blue-600" data-tab="dashboard">Dashboard</button>
+                    <button class="nav-btn border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700" data-tab="reservas">Minhas Reservas</button>
+                    <button class="nav-btn border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700" data-tab="nova-reserva">Nova Reserva</button>
+                </div>
+            </div>
+        </nav>
+        <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+            <div id="dashboardTab" class="tab-content">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                    <div class="bg-white rounded-lg shadow-md p-6"><div class="flex items-center"><div class="bg-blue-100 p-3 rounded-full"><i data-lucide="calendar" class="h-6 w-6 text-blue-600"></i></div><div class="ml-4"><p class="text-sm font-medium text-gray-600">Total de Reservas</p><p id="totalReservas" class="text-2xl font-bold text-gray-900">0</p></div></div></div>
+                    <div class="bg-white rounded-lg shadow-md p-6"><div class="flex items-center"><div class="bg-green-100 p-3 rounded-full"><i data-lucide="check-circle" class="h-6 w-6 text-green-600"></i></div><div class="ml-4"><p class="text-sm font-medium text-gray-600">Confirmadas</p><p id="reservasConfirmadas" class="text-2xl font-bold text-gray-900">0</p></div></div></div>
+                    <div class="bg-white rounded-lg shadow-md p-6"><div class="flex items-center"><div class="bg-purple-100 p-3 rounded-full"><i data-lucide="user" class="h-6 w-6 text-purple-600"></i></div><div class="ml-4"><p class="text-sm font-medium text-gray-600">Professor</p><p id="professorDash" class="text-lg font-bold text-gray-900">-</p></div></div></div>
+                </div>
+                <div class="bg-white rounded-lg shadow-md p-6 mb-8"><h2 class="text-lg font-semibold text-gray-900 mb-4">Próximas Reservas</h2><div id="proximasReservas" class="space-y-3"></div></div>
+                <div class="bg-white rounded-lg shadow-md p-6 mt-8"><h2 class="text-lg font-semibold text-gray-900 mb-4">Calendário de Disponibilidade</h2><div id="calendarContainer"><div id="calendarLoadingMessage" class="hidden">Carregando eventos...</div><div id="calendar" class="h-full"></div></div></div>
+            </div>
+            <div id="reservasTab" class="tab-content hidden"><div class="bg-white rounded-lg shadow-md"><div class="px-6 py-4 border-b border-gray-200"><h2 class="text-lg font-semibold text-gray-900">Minhas Reservas</h2></div><div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Laboratório</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Horário</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Disciplina</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th></tr></thead><tbody id="reservasTableBody" class="bg-white divide-y divide-gray-200"></tbody></table></div></div></div>
+            <div id="nova-reservaTab" class="tab-content hidden"><div class="bg-white rounded-lg shadow-md p-6"><h2 class="text-lg font-semibold text-gray-900 mb-6">Nova Reserva</h2><form id="reservaForm" class="space-y-6"><div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div><label class="block text-sm font-medium text-gray-700 mb-2">Laboratório</label><select id="laboratorio" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Selecione um laboratório</option></select></div><div><label class="block text-sm font-medium text-gray-700 mb-2">Data</label><input type="date" id="data" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></div><div><label class="block text-sm font-medium text-gray-700 mb-2">Horário Início</label><input type="time" id="horarioInicio" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></div><div><label class="block text-sm font-medium text-gray-700 mb-2">Horário Fim</label><input type="time" id="horarioFim" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></div><div><label class="block text-sm font-medium text-gray-700 mb-2">Disciplina</label><input type="text" id="disciplina" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nome da disciplina"></div><div><label class="block text-sm font-medium text-gray-700 mb-2">Turma</label><input type="text" id="turma" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Código da turma"></div></div><div><label class="block text-sm font-medium text-gray-700 mb-2">Descrição da Atividade</label><textarea id="descricao" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Descreva brevemente a atividade"></textarea></div><div id="disponibilidadeInfo" class="hidden p-4 rounded-md"></div><div id="reservaError" class="hidden p-3 bg-red-100 border border-red-400 text-red-700 rounded"></div><div id="reservaSuccess" class="hidden p-3 bg-green-100 border border-green-400 text-green-700 rounded"></div><div class="flex justify-end"><button type="submit" id="reservaBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-md transition duration-200">Criar Reserva</button></div></form></div></div>
+        </main>
+    </div>
+
+    <div id="adminSystem" class="hidden min-h-screen bg-gray-50">
+        <header class="bg-white shadow-sm border-b"><div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"><div class="flex justify-between items-center py-4"><div><h1 class="text-xl font-semibold text-gray-900">Painel de Administração</h1><p class="text-sm text-gray-600">Gerenciamento de Agendamentos e Professores</p></div><div class="flex items-center space-x-4"><span id="adminNome" class="text-sm text-gray-600"></span><button id="logoutAdminBtn" class="text-gray-500 hover:text-gray-700"><i data-lucide="log-out" class="w-5 h-5"></i></button></div></div></div></header>
+        <nav class="bg-white shadow-sm"><div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"><div class="flex space-x-8"><button class="nav-admin-btn active border-b-2 border-blue-500 py-4 px-1 text-sm font-medium text-blue-600" data-tab="admin-reservas">Gerenciar Reservas</button><button class="nav-admin-btn border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700" data-tab="admin-professores">Gerenciar Professores</button><button class="nav-admin-btn border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700" data-tab="admin-laboratorios">Gerenciar Laboratórios</button></div></div></nav>
+        <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+            <div id="admin-reservasTab" class="tab-content-admin"><div class="bg-white rounded-lg shadow-md"><div class="px-6 py-4 border-b border-gray-200"><h2 class="text-lg font-semibold text-gray-900">Todas as Reservas</h2></div><div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Laboratório</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Professor</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Horário</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Disciplina</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th></tr></thead><tbody id="adminReservasTableBody" class="bg-white divide-y divide-gray-200"></tbody></table></div></div></div>
+            <div id="admin-professoresTab" class="tab-content-admin hidden">
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6"><h2 class="text-lg font-semibold text-gray-900 mb-4">Cadastrar Novo Professor</h2><form id="professorForm" class="space-y-4"><div><label for="professorMatricula" class="block text-sm font-medium text-gray-700">Matrícula</label><input type="text" id="professorMatricula" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div><div><label for="professorNomeCompleto" class="block text-sm font-medium text-gray-700">Nome Completo</label><input type="text" id="professorNomeCompleto" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div><div><label for="professorSenha" class="block text-sm font-medium text-gray-700">Senha</label><input type="password" id="professorSenha" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div><div id="professorFormError" class="hidden p-3 bg-red-100 border border-red-400 text-red-700 rounded"></div><div id="professorFormSuccess" class="hidden p-3 bg-green-100 border border-green-400 text-green-700 rounded"></div><button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-200">Cadastrar Professor</button></form></div>
+                <div class="bg-white rounded-lg shadow-md p-6"><h2 class="text-lg font-semibold text-gray-900 mb-4">Lista de Professores</h2><div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Matrícula</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nome</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th></tr></thead><tbody id="professoresTableBody" class="bg-white divide-y divide-gray-200"></tbody></table></div></div>
+            </div>
+            <div id="admin-laboratoriosTab" class="tab-content-admin hidden">
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6"><h2 class="text-lg font-semibold text-gray-900 mb-4">Cadastrar Novo Laboratório</h2><form id="laboratorioForm" class="space-y-4"><div><label for="laboratorioNome" class="block text-sm font-medium text-gray-700">Nome</label><input type="text" id="laboratorioNome" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div><div><label for="laboratorioLocalizacao" class="block text-sm font-medium text-gray-700">Localização</label><input type="text" id="laboratorioLocalizacao" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div><div><label for="laboratorioCapacidade" class="block text-sm font-medium text-gray-700">Capacidade</label><input type="number" id="laboratorioCapacidade" required min="1" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div><div id="laboratorioFormError" class="hidden p-3 bg-red-100 border border-red-400 text-red-700 rounded"></div><div id="laboratorioFormSuccess" class="hidden p-3 bg-green-100 border border-green-400 text-green-700 rounded"></div><button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-200">Cadastrar Laboratório</button></form></div>
+                <div class="bg-white rounded-lg shadow-md p-6"><h2 class="text-lg font-semibold text-gray-900 mb-4">Lista de Laboratórios</h2><div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nome</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Localização</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Capacidade</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th></tr></thead><tbody id="laboratoriosTableBody" class="bg-white divide-y divide-gray-200"></tbody></table></div></div>
+            </div>
+        </main>
+    </div>
+
+    <div id="editModal" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="flex justify-between items-center mb-4"><h2 class="text-lg font-semibold text-gray-900">Editar Reserva</h2><button onclick="closeEditModal()" class="text-gray-500 hover:text-gray-800 text-2xl leading-none">&times;</button></div>
+            <form id="editReservaForm" class="space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div><label class="block text-sm font-medium text-gray-700 mb-2">Laboratório</label><select id="editLaboratorio" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></select></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-2">Data</label><input type="date" id="editData" required class="w-full px-3 py-2 border border-gray-300 rounded-md"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-2">Horário Início</label><input type="time" id="editHorarioInicio" required class="w-full px-3 py-2 border border-gray-300 rounded-md"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-2">Horário Fim</label><input type="time" id="editHorarioFim" required class="w-full px-3 py-2 border border-gray-300 rounded-md"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-2">Disciplina</label><input type="text" id="editDisciplina" required class="w-full px-3 py-2 border border-gray-300 rounded-md"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-2">Turma</label><input type="text" id="editTurma" required class="w-full px-3 py-2 border border-gray-300 rounded-md"></div>
+                </div>
+                <div><label class="block text-sm font-medium text-gray-700 mb-2">Descrição da Atividade</label><textarea id="editDescricao" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md"></textarea></div>
+                <div id="editDisponibilidadeInfo" class="hidden p-4 rounded-md"></div>
+                <div id="editReservaError" class="hidden p-3 bg-red-100 border border-red-400 text-red-700 rounded"></div>
+                <div id="editReservaSuccess" class="hidden p-3 bg-green-100 border border-green-400 text-green-700 rounded"></div>
+                <div class="flex justify-end space-x-4"><button type="button" onclick="closeEditModal()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-md">Cancelar</button><button type="submit" id="updateReservaBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-md">Salvar Alterações</button></div>
+            </form>
+        </div>
+    </div>
+
+<script>
+    // Estado global da aplicação
+    let currentUser = null;
+    let token = null;
+    let laboratorios = [];
+    let calendar = null;
+    let editingReservaId = null;
+
+    const API_BASE = '/api';
+
+    document.addEventListener('DOMContentLoaded', function() {
+        lucide.createIcons();
+        checkAuth();
+        setupEventListeners();
+        setMinDateForInputs();
+    });
+
+    function setMinDateForInputs() {
+        const today = new Date().toISOString().split('T')[0];
+        const dataInput = document.getElementById('data');
+        if (dataInput) dataInput.setAttribute('min', today);
+        const editDataInput = document.getElementById('editData');
+        if (editDataInput) editDataInput.setAttribute('min', today);
+    }
+
+    function checkAuth() {
+        token = localStorage.getItem('token');
+        const userData = localStorage.getItem('user');
+        if (token && userData && userData !== 'undefined' && userData !== 'null') {
+            try {
+                currentUser = JSON.parse(userData);
+                if (currentUser && currentUser.tipo) {
+                    if (currentUser.tipo === 'professor') showMainSystem();
+                    else if (currentUser.tipo === 'admin') showAdminSystem();
+                    else logout(); 
+                } else logout(); 
+            } catch (e) { console.error("Falha ao analisar dados do usuário. Forçando logout.", e); logout(); }
+        } else { logout(); }
+    }
+
+    function setupEventListeners() {
+        document.getElementById('loginForm')?.addEventListener('submit', handleLogin);
+        document.getElementById('logoutBtn')?.addEventListener('click', logout);
+        document.getElementById('logoutAdminBtn')?.addEventListener('click', logout);
+        document.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+        document.querySelectorAll('.nav-admin-btn').forEach(btn => btn.addEventListener('click', () => switchAdminTab(btn.dataset.tab)));
+        document.getElementById('reservaForm')?.addEventListener('submit', handleReserva);
+        document.getElementById('editReservaForm')?.addEventListener('submit', handleUpdateReserva);
+        
+        ['laboratorio', 'data', 'horarioInicio', 'horarioFim'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', verificarDisponibilidadeParaNovaReserva);
+        });
+        ['editLaboratorio', 'editData', 'editHorarioInicio', 'editHorarioFim'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', () => verificarDisponibilidadeParaEdicao(editingReservaId));
+        });
+
+        document.getElementById('professorForm')?.addEventListener('submit', handleProfessorRegistration);
+        document.getElementById('laboratorioForm')?.addEventListener('submit', handleLaboratorioRegistration);
+    }
+
+    function showLogin() {
+        document.getElementById('loginScreen').classList.remove('hidden');
+        document.getElementById('mainSystem').classList.add('hidden');
+        document.getElementById('adminSystem').classList.add('hidden');
+        document.getElementById('editModal').classList.add('hidden');
+    }
+
+    function showMainSystem() {
+        document.getElementById('loginScreen').classList.add('hidden');
+        document.getElementById('mainSystem').classList.remove('hidden');
+        document.getElementById('adminSystem').classList.add('hidden');
+        document.getElementById('editModal').classList.add('hidden'); 
+        if (currentUser) {
+             document.getElementById('professorNome').textContent = currentUser.nome;
+             document.getElementById('professorDash').textContent = currentUser.nome;
+        }
+        loadDashboard();
+        carregarLaboratorios(); 
+        if (!calendar) initCalendar(); else calendar.refetchEvents();
+        switchTab('dashboard');
+    }
+
+    function showAdminSystem() {
+        document.getElementById('loginScreen').classList.add('hidden');
+        document.getElementById('mainSystem').classList.add('hidden');
+        document.getElementById('adminSystem').classList.remove('hidden');
+        document.getElementById('editModal').classList.add('hidden'); 
+        if(currentUser) document.getElementById('adminNome').textContent = currentUser.nome;
+        loadAllReservas(); loadProfessores(); loadAdminLaboratorios();  
+        switchAdminTab('admin-reservas');
+    }
+
+    async function handleLogin(e) {
+        e.preventDefault();
+        const matricula = document.getElementById('matricula').value;
+        const senha = document.getElementById('senha').value;
+        const loginBtn = document.getElementById('loginBtn');
+        const errorDiv = document.getElementById('loginError');
+        loginBtn.textContent = 'Entrando...'; loginBtn.disabled = true;
+        errorDiv.classList.add('hidden');
+        try {
+            const response = await fetch(`${API_BASE}/login`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ matricula, senha }),
+            });
+            if (response.ok) {
+                const data = await response.json(); token = data.token; currentUser = data.user;
+                localStorage.setItem('token', token); localStorage.setItem('user', JSON.stringify(currentUser));
+                if (currentUser.tipo === 'professor') showMainSystem();
+                else if (currentUser.tipo === 'admin') showAdminSystem();
+                else showError('loginError', 'Tipo de usuário não reconhecido.');
+            } else { const errorData = await response.json(); showError('loginError', errorData.error || 'Erro ao fazer login'); }
+        } catch (err) { showError('loginError', 'Erro de conexão com o servidor.'); console.error('Erro no login:', err);
+        } finally { loginBtn.textContent = 'Entrar'; loginBtn.disabled = false; }
+    }
+
+    function logout() {
+        localStorage.removeItem('token'); localStorage.removeItem('user');
+        token = null; currentUser = null;
+        if (calendar) { calendar.destroy(); calendar = null; }
+        showLogin();
+    }
+
+    function switchTab(tabName) {
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.classList.remove('active', 'border-blue-500', 'text-blue-600');
+            btn.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700');
+        });
+        const activeBtn = document.querySelector(`.nav-btn[data-tab="${tabName}"]`);
+        if(activeBtn){ activeBtn.classList.add('active', 'border-blue-500', 'text-blue-600'); activeBtn.classList.remove('border-transparent', 'text-gray-500');}
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
+        document.getElementById(`${tabName}Tab`)?.classList.remove('hidden');
+        if (tabName === 'reservas') carregarMinhasReservas();
+        else if (tabName === 'dashboard') { loadDashboard(); if (calendar) calendar.refetchEvents(); else initCalendar(); }
+    }
+
+    function switchAdminTab(tabName) {
+        document.querySelectorAll('.nav-admin-btn').forEach(btn => {
+            btn.classList.remove('active', 'border-b-2', 'border-blue-500', 'text-blue-600');
+            btn.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700');
+        });
+        const activeBtn = document.querySelector(`.nav-admin-btn[data-tab="${tabName}"]`);
+        if(activeBtn){ activeBtn.classList.add('active', 'border-b-2', 'border-blue-500', 'text-blue-600'); activeBtn.classList.remove('border-transparent', 'text-gray-500');}
+        document.querySelectorAll('.tab-content-admin').forEach(content => content.classList.add('hidden'));
+        document.getElementById(`${tabName}Tab`)?.classList.remove('hidden');
+        if (tabName === 'admin-reservas') loadAllReservas();
+        else if (tabName === 'admin-professores') loadProfessores();
+        else if (tabName === 'admin-laboratorios') loadAdminLaboratorios();
+    }
+
+   async function loadDashboard() {
+    try {
+        // Busca dados do dashboard do backend
+        const response = await fetch(`${API_BASE}/dashboard`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Erro ao carregar dashboard');
+        const data = await response.json();
+
+document.getElementById('totalReservas').textContent = data.totalReservas ?? '0';
+document.getElementById('reservasConfirmadas').textContent = data.reservasConfirmadas ?? '0';
+
+        document.getElementById('professorDash').textContent = currentUser?.nome ?? '-';
+
+        // Próximas reservas
+        const proximasDiv = document.getElementById('proximasReservas');
+        proximasDiv.innerHTML = '';
+        if (Array.isArray(data.proximas_reservas) && data.proximas_reservas.length > 0) {
+            data.proximas_reservas.forEach(res => {
+                const item = document.createElement('div');
+                item.className = 'p-3 bg-gray-50 border rounded flex justify-between items-center';
+                item.innerHTML = `
+                    <div>
+                        <strong>${res.laboratorio_nome}</strong> - ${formatDate(res.data)}<br>
+                        <span class="text-xs">${res.horario_inicio} - ${res.horario_fim} | ${res.disciplina}</span>
+                    </div>
+                    <span class="${getStatusClass(res.status)} text-xs px-2 py-1 rounded">${getStatusText(res.status)}</span>
+                `;
+                proximasDiv.appendChild(item);
+            });
+        } else {
+            proximasDiv.innerHTML = '<div class="text-gray-500 text-sm">Nenhuma reserva futura.</div>';
+        }
+    } catch (err) {
+        document.getElementById('totalReservas').textContent = '0';
+        document.getElementById('reservasConfirmadas').textContent = '0';
+        document.getElementById('professorDash').textContent = '-';
+        document.getElementById('proximasReservas').innerHTML = '<div class="text-red-500 text-sm">Erro ao carregar dados.</div>';
+        console.error(err);
+    }
+}
+async function carregarLaboratorios() {
+    try {
+        const response = await fetch(`${API_BASE}/laboratorios`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Erro ao carregar laboratórios');
+        laboratorios = await response.json();
+
+        // Preenche selects de laboratório (nova reserva e edição)
+        const selects = [document.getElementById('laboratorio'), document.getElementById('editLaboratorio')];
+        selects.forEach(select => {
+            if (!select) return;
+            select.innerHTML = '<option value="">Selecione um laboratório</option>';
+            laboratorios.forEach(lab => {
+                const opt = document.createElement('option');
+                opt.value = lab.id;
+                opt.textContent = `${lab.nome} (${lab.localizacao})`;
+                select.appendChild(opt);
+            });
+        });
+    } catch (err) {
+        laboratorios = [];
+        const selects = [document.getElementById('laboratorio'), document.getElementById('editLaboratorio')];
+        selects.forEach(select => {
+            if (select) select.innerHTML = '<option value="">Erro ao carregar laboratórios</option>';
+        });
+        console.error(err);
+    }
+}
+
+    
+    async function verificarDisponibilidade(reservaIdExcluir = null) {
+        const formPrefix = reservaIdExcluir ? 'edit' : '';
+        const laboratorio = document.getElementById(`${formPrefix}Laboratorio`)?.value;
+        const data = document.getElementById(`${formPrefix}Data`)?.value;
+        const inicio = document.getElementById(`${formPrefix}HorarioInicio`)?.value;
+        const fim = document.getElementById(`${formPrefix}HorarioFim`)?.value;
+        const infoDiv = document.getElementById(reservaIdExcluir ? 'editDisponibilidadeInfo' : 'disponibilidadeInfo');
+        
+        if (!infoDiv || !laboratorio || !data || !inicio || !fim) { if(infoDiv) infoDiv.classList.add('hidden'); return; }
+        try {
+            const body = { laboratorio_id: laboratorio, data, horario_inicio: inicio, horario_fim: fim };
+            if (reservaIdExcluir) body.reserva_id_excluir = reservaIdExcluir;
+            const response = await fetch(`${API_BASE}/verificar-disponibilidade`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body) });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Erro na verificação');
+            infoDiv.className = `p-4 rounded-md ${result.disponivel ? 'bg-green-100 border-green-400 text-green-700' : 'bg-red-100 border-red-400 text-red-700'}`;
+            infoDiv.innerHTML = `<i data-lucide="${result.disponivel ? 'check-circle' : 'x-circle'}" class="inline w-4 h-4 mr-2"></i> ${result.disponivel ? 'Horário disponível!' : (result.error || 'Horário não disponível.')}`;
+            infoDiv.classList.remove('hidden'); lucide.createIcons();
+        } catch (err) {
+            console.error('Erro ao verificar disponibilidade:', err);
+            infoDiv.className = 'p-4 bg-red-100 border-red-400 text-red-700 rounded-md';
+            infoDiv.innerHTML = `<i data-lucide="alert-triangle" class="inline w-4 h-4 mr-2"></i>${err.message || 'Erro de conexão.'}`;
+            infoDiv.classList.remove('hidden'); lucide.createIcons();
+        }
+    }
+    function verificarDisponibilidadeParaNovaReserva() { verificarDisponibilidade(); }
+    function verificarDisponibilidadeParaEdicao(reservaIdSendoEditada) { verificarDisponibilidade(reservaIdSendoEditada); }
+
+ async function handleReserva(e) {
+    e.preventDefault();
+    hideMessages(['reservaError', 'reservaSuccess']);
+    const btn = document.getElementById('reservaBtn');
+    btn.disabled = true; btn.textContent = 'Criando...';
+
+    const formData = {
+        laboratorio_id: document.getElementById('laboratorio').value,
+        data: document.getElementById('data').value,
+        horario_inicio: document.getElementById('horarioInicio').value,
+        horario_fim: document.getElementById('horarioFim').value,
+        disciplina: document.getElementById('disciplina').value,
+        turma: document.getElementById('turma').value,
+        descricao_atividade: document.getElementById('descricao').value
+    };
+
+    try {
+        const response = await fetch(`${API_BASE}/reservas`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(formData)
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Erro ao criar reserva');
+        showSuccess('reservaSuccess', 'Reserva criada com sucesso!');
+        document.getElementById('reservaForm').reset();
+        if (calendar) calendar.refetchEvents();
+        loadDashboard();
+        carregarMinhasReservas();
+    } catch (err) {
+        showError('reservaError', err.message || 'Erro ao criar reserva.');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Criar Reserva';
+    }
+}
+
+async function carregarMinhasReservas() {
+    const tbody = document.getElementById('reservasTableBody');
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-400">Carregando...</td></tr>';
+
+    try {
+        const response = await fetch(`${API_BASE}/minhas-reservas`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Erro ao carregar reservas');
+        const reservas = await response.json();
+
+        if (!Array.isArray(reservas) || reservas.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-400">Nenhuma reserva encontrada.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        reservas.forEach(res => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="px-6 py-4">${res.laboratorio_nome}</td>
+                <td class="px-6 py-4">${formatDate(res.data)}</td>
+                <td class="px-6 py-4">${res.horario_inicio} - ${res.horario_fim}</td>
+                <td class="px-6 py-4">${res.disciplina}</td>
+                <td class="px-6 py-4"><span class="${getStatusClass(res.status)} text-xs px-2 py-1 rounded">${getStatusText(res.status)}</span></td>
+                <td class="px-6 py-4 space-x-2">
+                    <button class="text-blue-600 hover:underline" onclick="openEditModal(${res.id})">Editar</button>
+                    <button class="text-red-600 hover:underline" onclick="cancelarReserva(${res.id})">Cancelar</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-red-500">${err.message || 'Erro ao carregar reservas.'}</td></tr>`;
+    }
+}
+
+async function cancelarReserva(reservaId) {
+    if (!confirm('Tem certeza que deseja cancelar esta reserva?')) return;
+    try {
+        const response = await fetch(`${API_BASE}/reservas/${reservaId}/cancelar`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Erro ao cancelar reserva');
+        carregarMinhasReservas();
+        if (calendar) calendar.refetchEvents();
+        loadDashboard();
+    } catch (err) {
+        alert('Erro ao cancelar reserva: ' + (err.message || 'Erro desconhecido'));
+    }
+}
+
+
+    // VERSÃO DE initCalendar() COM LOGS DE DEBUGGING (DA RESPOSTA ANTERIOR)
+    function initCalendar() {
+        const calendarEl = document.getElementById('calendar');
+        const loadingMessageEl = document.getElementById('calendarLoadingMessage');
+        if (!calendarEl || !loadingMessageEl) { console.error("Elemento do calendário ou mensagem de loading não encontrado."); return;}
+
+        if (calendar) calendar.destroy(); 
+
+        calendar = new FullCalendar.Calendar(calendarEl, {
+            initialView: 'dayGridMonth', locale: 'pt-br',
+            headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,listWeek' },
+            loading: function(isLoading) { loadingMessageEl.classList.toggle('hidden', !isLoading); },
+            events: async function(fetchInfo, successCallback, failureCallback) {
+                console.log('FullCalendar: Solicitando eventos...');
+                try {
+                    const response = await fetch(`${API_BASE}/reservas-calendario`, { headers: { 'Authorization': `Bearer ${token}` }});
+                    if (response.ok) {
+                        const reservations = await response.json();
+                        console.log('FullCalendar: Reservas recebidas do backend:', reservations);
+                        const mappedEvents = reservations.map(res => ({
+                            id: String(res.id), 
+                            title: `${res.laboratorio_nome || 'Lab?'} (${res.disciplina || 'Disciplina?'} - ${res.professor_nome ? res.professor_nome.split(' ')[0] : 'N/A'})`,
+                            start: `${res.data}T${res.horario_inicio}`,
+                            end: `${res.data}T${res.horario_fim}`,
+                            color: getCalendarEventColor(res.status),
+                            extendedProps: { status: res.status, professor: res.professor_nome, turma: res.turma, descricao: res.descricao_atividade }
+                        }));
+                        console.log('FullCalendar: Eventos mapeados para o calendário:', mappedEvents);
+                        successCallback(mappedEvents);
+                    } else { 
+                        const errorText = await response.text();
+                        console.error('FullCalendar: Erro ao carregar eventos (!response.ok). Status:', response.status, 'Resposta:', errorText);
+                        failureCallback(new Error(`Erro ${response.status} ao carregar eventos.`)); 
+                    }
+                } catch (error) { 
+                    console.error('FullCalendar: Exceção ao carregar eventos (catch):', error);
+                    failureCallback(error); 
+                }
+            },
+            eventContent: function(arg) {
+                const statusText = getStatusText(arg.event.extendedProps.status);
+                return {
+                    html: `
+                        <div class="fc-event-main-frame p-1 overflow-hidden">
+                            <div class="fc-event-time text-xs">${arg.timeText}</div>
+                            <div class="fc-event-title-container">
+                                <div class="fc-event-title text-sm font-semibold truncate" title="${arg.event.title}">${arg.event.title}</div>
+                                ${arg.event.extendedProps.professor ? `<div class="text-xs text-gray-700 truncate" title="Prof: ${arg.event.extendedProps.professor}">Prof: ${arg.event.extendedProps.professor}</div>` : ''}
+                                <span class="px-1 py-0.5 text-xs rounded-full" style="background-color: ${arg.event.backgroundColor || getCalendarEventColor(arg.event.extendedProps.status)}; color: white;">${statusText}</span>
+                            </div>
+                        </div>`
+                };
+            },
+            eventDidMount: function(info) { /* console.log('FullCalendar: Evento montado:', info.event.title); */ },
+            datesSet: function(dateInfo) { if(calendar) calendar.refetchEvents(); }
+        });
+        calendar.render();
+    }
+
+    function getCalendarEventColor(status) { switch (status) { case 'confirmada': return '#10B981'; case 'pendente': return '#F59E0B'; case 'cancelada': return '#EF4444'; default: return '#6B7280';}}
+
+   // --- ADMIN FUNCTIONS ---
+
+// Carrega todas as reservas para o painel do administrador
+async function loadAllReservas() {
+    const tbody = document.getElementById('adminReservasTableBody');
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-gray-400">Carregando...</td></tr>';
+    try {
+       const response = await fetch(`${API_BASE}/reservas-admin`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+})
+
+        if (!response.ok) throw new Error('Erro ao carregar reservas');
+        const reservas = await response.json();
+
+        if (!Array.isArray(reservas) || reservas.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-gray-400">Nenhuma reserva encontrada.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        reservas.forEach(res => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="px-6 py-4">${res.laboratorio_nome}</td>
+                <td class="px-6 py-4">${res.professor_nome}</td>
+                <td class="px-6 py-4">${formatDate(res.data)}</td>
+                <td class="px-6 py-4">${res.horario_inicio} - ${res.horario_fim}</td>
+                <td class="px-6 py-4">${res.disciplina}</td>
+                <td class="px-6 py-4"><span class="${getStatusClass(res.status)} text-xs px-2 py-1 rounded">${getStatusText(res.status)}</span></td>
+                <td class="px-6 py-4 space-x-2">
+                    <button class="text-green-600 hover:underline" onclick="changeReservaStatus(${res.id}, 'confirmada')">Confirmar</button>
+                    <button class="text-yellow-600 hover:underline" onclick="changeReservaStatus(${res.id}, 'pendente')">Pendente</button>
+                    <button class="text-red-600 hover:underline" onclick="changeReservaStatus(${res.id}, 'cancelada')">Cancelar</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-red-500">${err.message || 'Erro ao carregar reservas.'}</td></tr>`;
+    }
+}
+
+// Altera o status de uma reserva (admin)
+async function changeReservaStatus(reservaId, newStatus) {
+    if (!confirm(`Tem certeza que deseja alterar o status para "${getStatusText(newStatus)}"?`)) return;
+    try {
+        const response = await fetch(`${API_BASE}/reservas/${reservaId}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ status: newStatus })
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Erro ao alterar status.');
+        }
+        loadAllReservas();
+        if (calendar) calendar.refetchEvents();
+    } catch (err) {
+        alert('Erro ao alterar status da reserva: ' + (err.message || 'Erro desconhecido'));
+    }
+}
+
+// Carrega a lista de professores para o painel do admin
+async function loadProfessores() {
+    const tbody = document.getElementById('professoresTableBody');
+    tbody.innerHTML = '<tr><td colspan="3" class="text-center text-gray-400">Carregando...</td></tr>';
+    try {
+        const response = await fetch(`${API_BASE}/professores`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Erro ao carregar professores');
+        const professores = await response.json();
+
+        if (!Array.isArray(professores) || professores.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" class="text-center text-gray-400">Nenhum professor cadastrado.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        professores.forEach(prof => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="px-6 py-4">${prof.matricula}</td>
+                <td class="px-6 py-4">${prof.nome}</td>
+                <td class="px-6 py-4">
+                    <button class="text-red-600 hover:underline" onclick="deleteProfessor(${prof.id})">Excluir</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="3" class="text-center text-red-500">${err.message || 'Erro ao carregar professores.'}</td></tr>`;
+    }
+}
+
+// Cadastra um novo professor (form já implementado acima)
+
+// Exclui um professor
+async function deleteProfessor(professorId) {
+    if (!confirm('Tem certeza que deseja excluir este professor?')) return;
+    try {
+        const response = await fetch(`${API_BASE}/professores/${professorId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Erro ao excluir professor.');
+        }
+        loadProfessores();
+    } catch (err) {
+        alert('Erro ao excluir professor: ' + (err.message || 'Erro desconhecido'));
+    }
+}
+
+// Carrega a lista de laboratórios para o painel do admin
+async function loadAdminLaboratorios() {
+    const tbody = document.getElementById('laboratoriosTableBody');
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-gray-400">Carregando...</td></tr>';
+    try {
+        const response = await fetch(`${API_BASE}/laboratorios`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Erro ao carregar laboratórios');
+        const labs = await response.json();
+
+        if (!Array.isArray(labs) || labs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-gray-400">Nenhum laboratório cadastrado.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        labs.forEach(lab => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="px-6 py-4">${lab.id}</td>
+                <td class="px-6 py-4">${lab.nome}</td>
+                <td class="px-6 py-4">${lab.localizacao}</td>
+                <td class="px-6 py-4">${lab.capacidade}</td>
+                <td class="px-6 py-4">
+                    <button class="text-red-600 hover:underline" onclick="deleteLaboratorio(${lab.id})">Excluir</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-red-500">${err.message || 'Erro ao carregar laboratórios.'}</td></tr>`;
+    }
+}
+
+// Cadastra um novo laboratório (form já implementado acima)
+
+// Exclui um laboratório
+async function deleteLaboratorio(laboratorioId) {
+    if (!confirm('Tem certeza que deseja excluir este laboratório?')) return;
+    try {
+        const response = await fetch(`${API_BASE}/laboratorios/${laboratorioId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Erro ao excluir laboratório.');
+        }
+        loadAdminLaboratorios();
+        carregarLaboratorios(); // Atualiza também os selects dos professores
+    } catch (err) {
+        alert('Erro ao excluir laboratório: ' + (err.message || 'Erro desconhecido'));
+    }
+}
+    // --- NOVAS FUNÇÕES PARA EDIÇÃO DE RESERVA (DA RESPOSTA ANTERIOR) ---
+  async function openEditModal(reservaId) {
+    editingReservaId = reservaId;
+    hideMessages(['editReservaError', 'editReservaSuccess', 'editDisponibilidadeInfo']);
+    document.getElementById('editModal').classList.remove('hidden');
+
+    try {
+        // Busca dados da reserva
+        const response = await fetch(`${API_BASE}/reservas/${reservaId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Erro ao carregar dados da reserva');
+        const res = await response.json();
+
+        // Preenche campos do formulário
+        document.getElementById('editLaboratorio').value = res.laboratorio_id;
+        document.getElementById('editData').value = res.data;
+        document.getElementById('editHorarioInicio').value = res.horario_inicio;
+        document.getElementById('editHorarioFim').value = res.horario_fim;
+        document.getElementById('editDisciplina').value = res.disciplina;
+        document.getElementById('editTurma').value = res.turma;
+        document.getElementById('editDescricao').value = res.descricao_atividade || '';
+    } catch (err) {
+        showError('editReservaError', err.message || 'Erro ao carregar dados da reserva.');
+    }
+}
+
+function closeEditModal() {
+    editingReservaId = null;
+    document.getElementById('editModal').classList.add('hidden');
+}
+
+async function handleUpdateReserva(e) {
+    e.preventDefault();
+    hideMessages(['editReservaError', 'editReservaSuccess']);
+    const btn = document.getElementById('updateReservaBtn');
+    btn.disabled = true; btn.textContent = 'Salvando...';
+
+    const formData = {
+        laboratorio_id: document.getElementById('editLaboratorio').value,
+        data: document.getElementById('editData').value,
+        horario_inicio: document.getElementById('editHorarioInicio').value,
+        horario_fim: document.getElementById('editHorarioFim').value,
+        disciplina: document.getElementById('editDisciplina').value,
+        turma: document.getElementById('editTurma').value,
+        descricao_atividade: document.getElementById('editDescricao').value
+    };
+
+    try {
+        const response = await fetch(`${API_BASE}/reservas/${editingReservaId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(formData)
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Erro ao atualizar reserva');
+        showSuccess('editReservaSuccess', 'Reserva atualizada com sucesso!');
+        if (calendar) calendar.refetchEvents();
+        carregarMinhasReservas();
+        loadDashboard();
+        setTimeout(closeEditModal, 1200);
+    } catch (err) {
+        showError('editReservaError', err.message || 'Erro ao atualizar reserva.');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Salvar Alterações';
+    }
+}
+
+
+    // Funções Utilitárias (DA RESPOSTA ANTERIOR)
+
+// --- Funções Utilitárias ---
+function showError(elementId, message) {
+    const el = document.getElementById(elementId);
+    if (el) {
+        el.textContent = message;
+        el.classList.remove('hidden');
+        el.classList.add('bg-red-100', 'border', 'border-red-400', 'text-red-700');
+    }
+}
+
+function showSuccess(elementId, message) {
+    const el = document.getElementById(elementId);
+    if (el) {
+        el.textContent = message;
+        el.classList.remove('hidden');
+        el.classList.add('bg-green-100', 'border', 'border-green-400', 'text-green-700');
+    }
+}
+
+function hideMessages(ids) {
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+    });
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '';
+    // Espera formato yyyy-mm-dd
+    const [y, m, d] = dateStr.split('-');
+    if (!y || !m || !d) return dateStr;
+    return `${d}/${m}/${y}`;
+}
+
+function getStatusClass(status) {
+    switch (status) {
+        case 'confirmada': return 'bg-green-100 border border-green-400 text-green-700';
+        case 'pendente': return 'bg-yellow-100 border border-yellow-400 text-yellow-700';
+        case 'cancelada': return 'bg-red-100 border border-red-400 text-red-700';
+        default: return 'bg-gray-100 border border-gray-300 text-gray-700';
+    }
+}
+
+function getStatusText(status) {
+    switch (status) {
+        case 'confirmada': return 'Confirmada';
+        case 'pendente': return 'Pendente';
+        case 'cancelada': return 'Cancelada';
+        default: return status;
+    }
+}
+
+</script>
+</body>
+</html>
