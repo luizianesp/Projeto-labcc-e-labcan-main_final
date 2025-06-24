@@ -43,8 +43,8 @@ Sistema completo de agendamento para os laboratórios LabCC (Laboratório de Ci�
 ### **1. 📁 Preparar o ambiente:**
 ```bash
 # Clone ou baixe o projeto
-git clone https://github.com/luizianesp/Projeto-labcc-e-labcan.git
-cd Projeto-labcc-e-labcan
+git clone https://github.com/luizianesp/Projeto-labcc-e-labcan-final.git
+cd Projeto-labcc-e-labcan-final
 
 # Ou extraia o arquivo ZIP baixado
 ```
@@ -58,8 +58,13 @@ pip install -r requirements.txt
 ```bash
 python app.py
 ```
+### **4. 🌐 Visualizar o banco via script:**
+```bash
+pip install -r requirements.txt
+```
+python ver_banco.py
 
-### **4. 🌐 Acessar o sistema:**
+### **5. 🌐 Acessar o sistema:**
 Abra seu navegador em: **http://localhost:5000**
 
 ## 🔐 Credenciais de Teste
@@ -69,7 +74,7 @@ O sistema vem com professores pré-cadastrados:
 | Professor | Matrícula | Senha | Departamento |
 |-----------|-----------|-------|--------------|
 | **Prof. André Gustavo** | `123456` | `123456` | Ciência da Computação |
-| **Prof. Maria Silva** | `123457` | `123456` | Ciência da Computação |
+| **administrador** | `999999` | `admin123` | 
 
 
 ## 🔄 Em Desenvolvimento (3ª Unidade)
@@ -124,7 +129,7 @@ status, created_at
 
 ```
 sistema-agendamento-labs/
-│
+├── ver_banco.py
 ├── 🐍 app.py                    # Backend Flask (400+ linhas)
 ├── 📦 requirements.txt          # Dependências Python
 ├── 📄 README.md                 # Este arquivo
@@ -156,10 +161,6 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-🎉 Status do Projeto
-🎯 PROJETO 75% CONCLUÍDO
-O sistema está funcionalmente completo para uso básico, com interface moderna e backend robusto. Todas as funcionalidades core estão implementadas e testadas.
-⭐ Destaque: Interface visual de alta qualidade com glassmorphism, animações e UX profissional.
 
-Desenvolvido com ❤️ para UERN - 2025
+Desenvolvido por:
 Diogo Gonçalves & Luziane Paulino dos Santos
