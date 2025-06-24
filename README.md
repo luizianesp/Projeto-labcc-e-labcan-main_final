@@ -43,7 +43,7 @@ Sistema completo de agendamento para os laboratórios LabCC (Laboratório de Ci�
 ### **1. 📁 Preparar o ambiente:**
 ```bash
 # Clone ou baixe o projeto
-git clone https://github.com/luizianesp/Projeto-labcc-e-labcan-final.git
+git clone https://github.com/luizianesp/Projeto-labcc-e-labcan-main_final.git
 cd Projeto-labcc-e-labcan-final
 
 # Ou extraia o arquivo ZIP baixado
